@@ -452,7 +452,7 @@ void SetLedColor(unsigned char ucColor)
  * The main loop of the HTTPS Hello World test
  */
 int main() {
-    wait (5.0);
+    wait (1.0);
 
      // Set LED to RED until init finishes
     SetLedColor(0x1); //Red
@@ -467,13 +467,11 @@ int main() {
     //eth_iface.connect();
     PRINTF("Hello World from the Cellular IoT Kit!\r\n\r\n");
 
-    char apn[50];
-    char user[50];
-    char password[50];
     CellularModuleInterface *cell_module = new M14A2A(PTD3, PTD2, 115200);
     TrackingCellularInterface *cell_iface = new TrackingCellularInterface(cell_module);
     cell_iface->connect("m2m.com.attz", 0, 0);
-
+    SetLedColor(0x2); //Green
+    while(1);
     //mbedtls_printf("Using Cellular M14A2A\r\n");
     /*const char *ip_addr = cell_iface.get_ip_address();
     if (ip_addr) {

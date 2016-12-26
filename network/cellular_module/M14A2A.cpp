@@ -44,31 +44,40 @@ int M14A2A::initCellularInternet(const char *apn, const char *username, const ch
   // Temp put here to fix new boards needing init,
   //  the check for on the cellular network was preventing the PDNSET from happening!!!!
   {
-    PRINTF("BEGIN initCellularInternet\r\n\r\n");
     if (hw_init())
     {
+#ifdef M14A2A_DEBUG
       PRINTF("Cellular is running...\r\n");
+#endif
     }
     else
     {
+#ifdef M14A2A_DEBUG
       PRINTF("Cellular is sleeping...\r\n");
+#endif
       return 0;
     }
     const char *rsp_lst[] = {ok_str, error_str, NULL};
     string cmd_str("AT%PDNSET=1,");
     cmd_str += apn;
     cmd_str += ",IP";
-    PRINTF("Send Command\r\n\r\n");
 
     at_cmd->sendCommand(cmd_str.c_str(), rsp_lst, 4 * WNC_TIMEOUT_MS); // Set APN, cmd seems to take a little longer sometimes
-    PRINTF("End initCellularInternet\r\n\r\n");
   }
+  /*if (isReady() == 0)
+  {
+    PRINTF("Cellular is ready...\r\n");
+  }
+  else
+  {
+    PRINTF("Cellular is not ready yet...\r\n");
+  }*/
 
   /*static bool reportStatus = true;
   do
   {
     PUTS("------------ software_init_mdm! --------->\r\n");
-    if (check_wnc_ready() == 0)
+    if (isReady() == 0)
     {
       if (reportStatus == false)
       {
@@ -83,7 +92,7 @@ int M14A2A::initCellularInternet(const char *apn, const char *username, const ch
         at_init_wnc();
         if (WNC_MDM_ERR == WNC_NO_RESPONSE)
         {
-          reinitialize_mdm();
+          reinitialize_hw();
           at_init_wnc(true); // Hard reset occurred so make it go through the software init();
         }
       } while (WNC_MDM_ERR != WNC_OK);
@@ -159,67 +168,84 @@ bool M14A2A::hw_init()
   return false;
 }
 
-int M14A2A::isModuleReady(void)
+void M14A2A::reinitialize_hw(void)
 {
-  /*string * pRespStr;
-    size_t pos;
-    int regSts;
-    int cmdRes1, cmdRes2;
+// Initialize the modem
+#ifdef M14A2A_DEBUG
+  PRINTF(GRN "Modem RE-initializing..." DEF "\r\n");
+#endif
+  if (!hw_init())
+  {
+#ifdef M14A2A_DEBUG
+    PRINTF(RED "\n\rModem RE-initialization failed!" DEF "\n");
+#endif
+  }
+#ifdef M14A2A_DEBUG
+  PRINTF("\r\n");
+#endif
+}
 
-#ifdef WNC_CMD_DEBUG_ON_VERBOSE
-    PUTS("<-------- Begin Cell Status ------------\r\n");
+int M14A2A::isReady(void)
+{
+  string *pRespStr = new string;
+  size_t pos;
+  int regSts;
+  int cmdRes1, cmdRes2;
+
+#ifdef M14A2A_DEBUG
+  PUTS("<-------- Begin Cell Status ------------\r\n");
 #endif
-    cmdRes1 = at_send_wnc_cmd("AT+CSQ", &pRespStr, WNC_TIMEOUT_MS);       // Check RSSI,BER
-    cmdRes2 = at_send_wnc_cmd("AT+CPIN?", &pRespStr, WNC_TIMEOUT_MS);      // Check if SIM locked
-    
-    if ((cmdRes1 != 0) && (cmdRes2 != 0))
-    {
-#ifdef WNC_CMD_DEBUG_ON_VERBOSE
-        PUTS("------------ WNC No Response! --------->\r\n");
+  cmdRes1 = at_cmd->sendCommandRsp("AT+CSQ", WNC_TIMEOUT_MS, pRespStr);   // Check RSSI,BER
+  cmdRes2 = at_cmd->sendCommandRsp("AT+CPIN?", WNC_TIMEOUT_MS, pRespStr); // Check if SIM locked
+
+  if ((cmdRes1 != 0) && (cmdRes2 != 0))
+  {
+#ifdef M14A2A_DEBUG
+    PUTS("------------ WNC No Response! --------->\r\n");
 #endif
-        return (-2);      
-    }
-  
-    // If SIM Card not ready don't bother with commands!
-    if (pRespStr->find("CPIN: READY") == string::npos)
-    {
-#ifdef WNC_CMD_DEBUG_ON_VERBOSE
-        PUTS("------------ WNC SIM Problem! --------->\r\n");
+    return (-2);
+  }
+
+  // If SIM Card not ready don't bother with commands!
+  if (pRespStr->find("CPIN: READY") == string::npos)
+  {
+#ifdef M14A2A_DEBUG
+    PUTS("------------ WNC SIM Problem! --------->\r\n");
 #endif
-        return (-1);
-    }
-  
-    // SIM card OK, now check for signal and cellular network registration
-    cmdRes1 = at_send_wnc_cmd("AT+CREG?", &pRespStr, WNC_TIMEOUT_MS);      // Check if registered on network
-    if (pRespStr->size() > 0)
-    {
+    return (-1);
+  }
+
+  // SIM card OK, now check for signal and cellular network registration
+  cmdRes1 = at_cmd->sendCommandRsp("AT+CREG?", WNC_TIMEOUT_MS, pRespStr); // Check if registered on network
+  if (pRespStr->size() > 0)
+  {
     pos = pRespStr->find("CREG: ");
     if (pos != string::npos)
     {
-        // The registration is the 2nd arg in the comma separated list
-        *pRespStr = pRespStr->substr(pos+8, 1);
-        regSts = atoi(pRespStr->c_str());
-        // 1 - registered home, 5 - registered roaming
-        if ((regSts != 1) && (regSts != 5))
-        {
-#ifdef WNC_CMD_DEBUG_ON_VERBOSE
-            PUTS("------------ WNC Cell Link Down! ------>\r\n");
-#endif
-            return (-2);
-        }
-    }
-
-#ifdef WNC_CMD_DEBUG_ON_VERBOSE
-    PUTS("------------ WNC Ready ---------------->\r\n");
-#endif
-    }
-    else
-    {
-#ifdef WNC_CMD_DEBUG_ON_VERBOSE
-        PUTS("------------ CREG No Reply !----------->\r\n");
+      // The registration is the 2nd arg in the comma separated list
+      *pRespStr = pRespStr->substr(pos + 8, 1);
+      regSts = atoi(pRespStr->c_str());
+      // 1 - registered home, 5 - registered roaming
+      if ((regSts != 1) && (regSts != 5))
+      {
+#ifdef M14A2A_DEBUG
+        PUTS("------------ WNC Cell Link Down! ------>\r\n");
 #endif
         return (-2);
-    }*/
+      }
+    }
+
+#ifdef M14A2A_DEBUG
+    PUTS("------------ WNC Ready ---------------->\r\n");
+#endif
+  }
+  else
+  {
+#ifdef M14A2A_DEBUG
+    PUTS("------------ CREG No Reply !----------->\r\n");
+#endif
+    return (-2);
+  }
 
   return (0);
 }

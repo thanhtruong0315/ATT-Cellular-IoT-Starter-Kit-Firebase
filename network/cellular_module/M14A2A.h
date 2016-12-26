@@ -22,6 +22,7 @@ language governing permissions and limitations under the License.
 #include "CellularModuleInterface.h"
 
 #define WNC_TIMEOUT_MS      10000
+#define M14A2A_DEBUG        1
 
 class M14A2A : public CellularModuleInterface
 {
@@ -30,8 +31,9 @@ class M14A2A : public CellularModuleInterface
     int initCellularInternet(const char *apn, const char *username = 0, const char *password = 0);
   private:
     ATCommand *at_cmd;
-    int isModuleReady(void);
+    int isReady(void);
     bool hw_init();
+    void reinitialize_hw(void);
 };
 
 #endif
