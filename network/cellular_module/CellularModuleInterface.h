@@ -22,8 +22,10 @@ language governing permissions and limitations under the License.
 
 class CellularModuleInterface
 {
-  public:
-    virtual int initCellularInternet(const char *apn, const char *username = 0, const char *password = 0);
+public:
+  virtual int connectInternet();
+  virtual char *getIPAddress();
+  virtual void setAPN(const char *apn, const char *username = 0, const char *password = 0);
 };
 
 #endif

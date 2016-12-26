@@ -470,11 +470,12 @@ int main() {
     CellularModuleInterface *cell_module = new M14A2A(PTD3, PTD2, 115200);
     TrackingCellularInterface *cell_iface = new TrackingCellularInterface(cell_module);
     cell_iface->connect("m2m.com.attz", 0, 0);
+    const char *ip_addr = cell_iface->get_ip_address();
+    PRINTF("MAIN IP Address: %s\r\n", ip_addr);
     SetLedColor(0x2); //Green
-    while(1);
-    //mbedtls_printf("Using Cellular M14A2A\r\n");
-    /*const char *ip_addr = cell_iface.get_ip_address();
-    if (ip_addr) {
+
+
+    /*if (ip_addr) {
         mbedtls_printf("Client IP Address is %s\r\n", ip_addr);
     } else {
         mbedtls_printf("No Client IP Address\r\n");

@@ -21,19 +21,26 @@ language governing permissions and limitations under the License.
 #include "mbed.h"
 #include "CellularModuleInterface.h"
 
-#define WNC_TIMEOUT_MS      10000
-#define M14A2A_DEBUG        1
+#define WNC_TIMEOUT_MS 10000
+#define M14A2A_DEBUG
 
 class M14A2A : public CellularModuleInterface
 {
-  public:
-    M14A2A(PinName tx, PinName rx, int baud);
-    int initCellularInternet(const char *apn, const char *username = 0, const char *password = 0);
-  private:
-    ATCommand *at_cmd;
-    int isReady(void);
-    bool hw_init();
-    void reinitialize_hw(void);
+public:
+  M14A2A(PinName tx, PinName rx, int baud);
+  int connectInternet();
+  char *getIPAddress();
+  void setAPN(const char *apn, const char *username = 0, const char *password = 0);
+
+private:
+  ATCommand *at_cmd;
+  int isReady(void);
+  bool hw_init();
+  void reinitialize_hw(void);
+  void sw_init(bool hardReset = false);
+  const char *apn;
+  const char *username;
+  const char *password;
 };
 
 #endif

@@ -17,10 +17,15 @@ nsapi_error_t TrackingCellularInterface::set_credentials(const char *apn, const 
 nsapi_error_t TrackingCellularInterface::connect(const char *apn, const char *username, const char *password)
 {
     PRINTF("Init cellular\r\n");
-
-    _cellularModule->initCellularInternet(apn, username, password);
-
-    PRINTF("Init cellular: DONE\r\n");
+    char *IPAddress = NULL;
+    _cellularModule->setAPN(apn, username, password);
+    if (_cellularModule->connectInternet() == 0)
+    {
+        IPAddress = _cellularModule->getIPAddress();
+        PRINTF("------IPAddress: %s\r\n", IPAddress);
+        _ip_address.set_ip_address(IPAddress);
+    }
+    PRINTF("Init cellular: DONE %s\r\n", IPAddress);
     return 0;
 }
 
@@ -35,8 +40,7 @@ int TrackingCellularInterface::disconnect()
 
 const char *TrackingCellularInterface::get_ip_address()
 {
-    //return _ip_address.get_ip_address();
-    return 0;
+    return _ip_address.get_ip_address();
 }
 
 const char *TrackingCellularInterface::get_mac_address()

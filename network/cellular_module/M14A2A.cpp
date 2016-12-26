@@ -34,12 +34,30 @@ DigitalOut mdm_reset(PTC12); // active high
 DigitalOut shield_3v3_1v8_sig_trans_ena(PTC4); // 0 = disabled (all signals high impedence, 1 = translation active
 DigitalOut mdm_uart1_cts(PTD0);
 
+enum WNC_ERR_e
+{
+  WNC_OK = 0,
+  WNC_CMD_ERR = -1,
+  WNC_NO_RESPONSE = -2,
+  WNC_CELL_LINK_DOWN = -3,
+  WNC_EXTERR = -4
+};
+
+WNC_ERR_e WNC_MDM_ERR = WNC_OK;
+
 M14A2A::M14A2A(PinName tx, PinName rx, int baud)
 {
   at_cmd = new ATCommand(tx, rx, baud);
 }
 
-int M14A2A::initCellularInternet(const char *apn, const char *username, const char *password)
+void M14A2A::setAPN(const char *apn, const char *username, const char *password)
+{
+  this->apn = apn;
+  this->username = username;
+  this->password = password;
+}
+
+int M14A2A::connectInternet()
 {
   // Temp put here to fix new boards needing init,
   //  the check for on the cellular network was preventing the PDNSET from happening!!!!
@@ -59,21 +77,13 @@ int M14A2A::initCellularInternet(const char *apn, const char *username, const ch
     }
     const char *rsp_lst[] = {ok_str, error_str, NULL};
     string cmd_str("AT%PDNSET=1,");
-    cmd_str += apn;
+    cmd_str += this->apn;
     cmd_str += ",IP";
 
     at_cmd->sendCommand(cmd_str.c_str(), rsp_lst, 4 * WNC_TIMEOUT_MS); // Set APN, cmd seems to take a little longer sometimes
   }
-  /*if (isReady() == 0)
-  {
-    PRINTF("Cellular is ready...\r\n");
-  }
-  else
-  {
-    PRINTF("Cellular is not ready yet...\r\n");
-  }*/
 
-  /*static bool reportStatus = true;
+  static bool reportStatus = true;
   do
   {
     PUTS("------------ software_init_mdm! --------->\r\n");
@@ -89,11 +99,11 @@ int M14A2A::initCellularInternet(const char *apn, const char *username, const ch
       do
       {
         WNC_MDM_ERR = WNC_OK;
-        at_init_wnc();
+        this->sw_init();
         if (WNC_MDM_ERR == WNC_NO_RESPONSE)
         {
           reinitialize_hw();
-          at_init_wnc(true); // Hard reset occurred so make it go through the software init();
+          this->sw_init(true); // Hard reset occurred so make it go through the software init();
         }
       } while (WNC_MDM_ERR != WNC_OK);
     }
@@ -113,7 +123,7 @@ int M14A2A::initCellularInternet(const char *apn, const char *username, const ch
       //     wait_ms(31000);
       WNC_MDM_ERR = WNC_CELL_LINK_DOWN;
     }
-  } while (WNC_MDM_ERR != WNC_OK);*/
+  } while (WNC_MDM_ERR != WNC_OK);
 
   return 0;
 }
@@ -248,4 +258,122 @@ int M14A2A::isReady(void)
   }
 
   return (0);
+}
+
+void M14A2A::sw_init(bool hardReset)
+{
+  static bool pdnSet = false;
+  static bool intSet = false;
+  static bool sockDialSet = false;
+  string *pRespStr = new string;
+  int cmdRes;
+
+  if (hardReset == true)
+  {
+    PUTS("Hard Reset!\r\n");
+    pdnSet = false;
+    intSet = false;
+    sockDialSet = false;
+  }
+
+  PUTS("Start AT init of WNC:\r\n");
+  // Quick commands below do not need to check cellular connectivity
+  cmdRes = this->at_cmd->sendCommandRsp("AT", WNC_TIMEOUT_MS, pRespStr);         // Heartbeat?
+  cmdRes += this->at_cmd->sendCommandRsp("ATE0", WNC_TIMEOUT_MS, pRespStr);      // Echo Off
+  cmdRes += this->at_cmd->sendCommandRsp("AT+CMEE=2", WNC_TIMEOUT_MS, pRespStr); // 2 - verbose error, 1 - numeric error, 0 - just ERROR
+
+  // If the simple commands are not working no chance of more complex.
+  //  I have seen re-trying commands make it worse.
+  if (cmdRes < 0)
+  {
+    // Since I used the at_send_wnc_cmd I am setting the error state based upon
+    //  the responses.  And since these are simple commands, even if the WNC
+    //  is saying ERROR, treat it like a no response.
+    WNC_MDM_ERR = WNC_NO_RESPONSE;
+    return;
+  }
+
+  if (intSet == false)
+    cmdRes = this->at_cmd->sendCommandRsp("AT@INTERNET=1", WNC_TIMEOUT_MS, pRespStr);
+
+  if (cmdRes == 0)
+    intSet = true;
+  else
+    return;
+
+  if (pdnSet == false)
+  {
+    string cmd_str("AT%PDNSET=1,");
+    cmd_str += this->apn;
+    cmd_str += ",IP";
+    cmdRes = this->at_cmd->sendCommandRsp(cmd_str.c_str(), 4 * WNC_TIMEOUT_MS, pRespStr); // Set APN, cmd seems to take a little longer sometimes
+  }
+
+  if (cmdRes == 0)
+    pdnSet = true;
+  else
+    return;
+
+  if (sockDialSet == false)
+    cmdRes = this->at_cmd->sendCommandRsp("AT@SOCKDIAL=1", WNC_TIMEOUT_MS, pRespStr);
+
+  if (cmdRes == 0)
+    sockDialSet = true;
+  else
+    return;
+
+  PUTS("SUCCESS: AT init of WNC!\r\n");
+}
+
+char* M14A2A::getIPAddress()
+{
+  string *pRespStr = new string;
+  int cmdRes;
+
+  PUTS("Get IP Address: \r\n");
+  // Quick commands below do not need to check cellular connectivity
+  cmdRes = this->at_cmd->sendCommandRsp("AT+CGCONTRDP=1", WNC_TIMEOUT_MS, pRespStr); // Heartbeat?
+
+  if (WNC_OK == cmdRes)
+  {
+    if (pRespStr->size() > 0)
+    {
+      string ss;
+      size_t pe;
+      size_t ps = pRespStr->rfind("\"");
+      if (ps != string::npos)
+      {
+        ps += 2; // Skip the , after the "
+        pe = ps;
+
+        pe = pRespStr->find(".", pe);
+        if (pe == string::npos)
+          return NULL;
+        else
+          pe += 1;
+        pe = pRespStr->find(".", pe);
+        if (pe == string::npos)
+          return NULL;
+        else
+          pe += 1;
+        pe = pRespStr->find(".", pe);
+        if (pe == string::npos)
+          return NULL;
+        else
+          pe += 1;
+        pe = pRespStr->find(".", pe);
+        if (pe == string::npos)
+          return NULL;
+        else
+          pe += 1;
+
+        ss = pRespStr->substr(ps, pe - 1 - ps);
+        char *cstr = new char[ss.length() + 1];
+        strcpy(cstr, ss.c_str());
+        return cstr;
+      }
+    }
+  }
+
+  return 0;
 }

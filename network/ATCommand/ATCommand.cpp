@@ -79,7 +79,9 @@ int ATCommand::send(const char *cmd, const char **rsp_list, int timeout_ms, stri
                 *response_len += lenCmd;
                 *response += cmd_buf;
             }
-
+#ifdef AT_DEBUG
+            PRINTF("AT response: %s\r\n", cmd_buf);
+#endif
             // check string which is returned from module
             int checkResult = this->verifyATCode(rsp_list, cmd_buf);
             if (checkResult != -1)
